@@ -1,6 +1,6 @@
 # Example investigations
 
-These examples contain synthetic evidence, not live AWS results.
+The first two examples are synthetic. The third summarizes a real controlled non-production test.
 
 ## Healthy database
 
@@ -21,3 +21,7 @@ These examples contain synthetic evidence, not live AWS results.
 **Action:** No sessions terminated; no configuration changed.
 
 See the [article](../docs/blog-postgresql.html) for an explicitly simulated Agent Space conversation.
+
+## Observed high CPU investigation
+
+In a controlled test, RDS CPU reached approximately 100% from a ~5% baseline, two alarms fired, and AWS DevOps Agent completed a user-triggered investigation in 5 minutes 19 seconds. Three PostgreSQL MCP tool calls were recorded. No mitigation was executed. See the [sanitized case study](../docs/blog-postgresql.html#validated-cpu); automatic webhook triggering remains unverified.
