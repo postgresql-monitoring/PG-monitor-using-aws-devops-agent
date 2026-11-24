@@ -1,0 +1,264 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Automating Amazon RDS for PostgreSQL investigations with AWS DevOps Agent, MCP, and Agent Skills</title>
+<style>
+body { font: 18px/1.6 -apple-system, sans-serif; max-width: 980px; margin: 48px auto; padding: 0 24px; color: #16191f; }
+h1 { font-size: 2.3rem; line-height: 1.15; } h2 { margin-top: 2.2rem; } img { width: 100%; }
+code { background: #f2f3f3; padding: 0.1em 0.35em; border-radius: 4px; }
+pre { background: #0f1419; color: #f2f3f3; padding: 16px; overflow: auto; border-radius: 8px; } pre code { background: transparent; color: inherit; }
+table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #d5dbdb; padding: 8px 10px; text-align: left; } th { background: #fafafa; }
+figure { margin: 28px 0; } figcaption { color: #576474; font-size: 14px; margin-top: 10px; }
+.demo-chat { border: 1px solid #373a44; border-radius: 12px; overflow: hidden; background: #202126; color: #f0f1f4; font: 14px/1.55 -apple-system, BlinkMacSystemFont, Arial, sans-serif; }
+.demo-banner { background: #3b3224; color: #ffe1ac; padding: 9px 16px; font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+.demo-shell { display: grid; grid-template-columns: 200px minmax(0,1fr); }
+.demo-sidebar { background: #191a1d; border-right: 1px solid #34363b; padding: 16px 12px; color: #cecfd5; }
+.demo-sidebar strong { color: white; display:block; margin-bottom: 22px; font-size: 14px; }
+.demo-sidebar p { margin: 12px 0; }
+.demo-nav-label { color:#8e95a3; font-size:12px; margin-top: 25px; }
+.demo-selected { background: #303137; padding: 8px; border-radius: 7px; color: #fff; }
+.demo-main { min-width:0; background: radial-gradient(ellipse at bottom left, #203136 0%, #23242a 46%, #1f2024 100%); }
+.demo-header { background: #1e1f23; padding: 14px 18px; border-bottom: 1px solid #36363d; font-weight: 600; }
+.demo-messages { padding: 20px; }
+.demo-user { background: #34353b; border: 1px solid #45464c; border-radius: 13px; padding: 10px 14px; margin: 12px 0 20px auto; width: fit-content; max-width: 85%; }
+.demo-agent { margin: 12px 0 20px; }
+.demo-agent p { margin: 8px 0; }
+.demo-agent ul { padding-left: 20px; margin: 8px 0; }
+.demo-agent code { background:#34363d; color:#f2f4f8; overflow-wrap:anywhere; }
+.demo-tools { border: 1px solid #46464d; border-radius: 8px; padding: 10px 12px; margin: 14px 0; color:#b0b7c6; }
+.demo-tools summary { cursor: pointer; font-weight:600; }
+.demo-time { font-size: 11px; color:#9ba3b1; text-align:right; }
+@media (max-width: 650px) { .demo-shell { grid-template-columns: 1fr; } .demo-sidebar { display:none; } .demo-messages { padding: 14px; } }
+</style><body><p><strong>Reference design and illustrative examples; deployment components and live AWS validation are pending. See the repository README for current scope.</strong></p><h1>Automating Amazon RDS for PostgreSQL investigations with AWS DevOps Agent, MCP, and Agent Skills</h1>
+<p>AWS DevOps Agent investigates operational events and delivers findings to your team. In this post, we walk through an architecture that exposes PostgreSQL diagnostic tools to AWS DevOps Agent as Model Context Protocol (MCP) tools. The tools run in an AWS Lambda function, and Amazon Bedrock AgentCore Gateway hosts the MCP endpoint. An AWS DevOps Agent skill defines the investigation steps, severity thresholds, and report format. Two CloudFormation stacks provision the infrastructure, with additional integration and skill configuration. We then follow two investigations that combine built-in Amazon CloudWatch telemetry with direct PostgreSQL access through the Gateway.</p>
+<h2>Solution overview</h2>
+<p>This solution uses AWS DevOps Agent, Amazon Bedrock AgentCore Gateway, and AWS Lambda to automate database investigations for Amazon RDS for PostgreSQL. The following diagram shows the architecture.</p>
+<figure class="architecture">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 660" width="100%" role="img" aria-labelledby="arch-title arch-desc">
+<title id="arch-title">AWS DevOps Agent for RDS PostgreSQL investigations</title>
+<desc id="arch-desc">Two entry points feed an agent guided by an investigation skill. It consults native telemetry and calls diagnostic tools through AgentCore Gateway. A private Lambda reads credentials and queries RDS. The agent returns findings for human review.</desc>
+<defs><marker id="arr" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0 0 L10 4 L0 8Z" fill="#65778a"/></marker><marker id="orange" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0 0 L10 4 L0 8Z" fill="#c56817"/></marker></defs>
+<rect x="1" y="1" width="958" height="658" rx="16" fill="#f7f9fc" stroke="#d8e1eb"/>
+<g font-family="Arial,sans-serif" fill="#26374a">
+<text x="30" y="34" font-size="12" font-weight="bold" letter-spacing="2">01  INVESTIGATION TRIGGERS</text>
+<rect x="30" y="48" width="260" height="66" rx="10" fill="#fff" stroke="#c4d1df"/><text x="160" y="77" text-anchor="middle" font-size="17" font-weight="bold">On-call engineer</text><text x="160" y="96" text-anchor="middle" font-size="12">Agent Space chat</text>
+<rect x="350" y="48" width="260" height="66" rx="10" fill="#fff" stroke="#c4d1df"/><text x="480" y="77" text-anchor="middle" font-size="17" font-weight="bold">CloudWatch alarm</text><text x="480" y="96" text-anchor="middle" font-size="12">Metric threshold breached</text>
+<rect x="670" y="48" width="260" height="66" rx="10" fill="#fff" stroke="#c4d1df"/><text x="800" y="77" text-anchor="middle" font-size="17" font-weight="bold">Webhook Lambda</text><text x="800" y="96" text-anchor="middle" font-size="12">HMAC-signed event</text>
+<text x="30" y="157" font-size="12" font-weight="bold" letter-spacing="2">02  AGENT SPACE</text>
+<rect x="30" y="174" width="260" height="76" rx="10" fill="#edf2fa" stroke="#98afd2"/><text x="160" y="202" text-anchor="middle" font-size="16" font-weight="bold">Investigation skill</text><text x="160" y="222" text-anchor="middle" font-size="12">Triage · Diagnose · Drill down</text><text x="160" y="238" text-anchor="middle" font-size="12">Correlate · Recommend</text>
+<rect x="350" y="174" width="260" height="76" rx="10" fill="#24364b"/><text x="480" y="204" text-anchor="middle" font-size="18" font-weight="bold" fill="#fff">AWS DevOps Agent</text><text x="480" y="228" text-anchor="middle" font-size="13" fill="#dae6f3">Evidence-driven investigation</text>
+<rect x="670" y="174" width="260" height="76" rx="10" fill="#e8f5ee" stroke="#8dbca3"/><text x="800" y="202" text-anchor="middle" font-size="16" font-weight="bold">Investigation report</text><text x="800" y="223" text-anchor="middle" font-size="12">Severity · Evidence · Recommendations</text><text x="800" y="239" text-anchor="middle" font-size="12">Human review</text>
+<text x="30" y="294" font-size="12" font-weight="bold" letter-spacing="2">03  NATIVE TELEMETRY</text><text x="350" y="294" font-size="12" font-weight="bold" letter-spacing="2">04  DOMAIN-SPECIFIC MCP DIAGNOSTICS</text>
+<rect x="30" y="318" width="260" height="94" rx="10" fill="#edf2fa" stroke="#98afd2"/><text x="160" y="347" text-anchor="middle" font-size="16" font-weight="bold">CloudWatch</text><text x="160" y="368" text-anchor="middle" font-size="14">Database Insights &amp; Logs</text><text x="160" y="390" text-anchor="middle" font-size="12">Metrics · Waits · Historical context</text>
+<rect x="350" y="318" width="580" height="94" rx="10" fill="#fff3e5" stroke="#e4a45a"/><text x="640" y="348" text-anchor="middle" font-size="17" font-weight="bold">Amazon Bedrock AgentCore Gateway</text><text x="640" y="370" text-anchor="middle" font-size="13">MCP endpoint · SigV4 authorization · Registered tools</text><text x="640" y="390" text-anchor="middle" font-size="12">Lambda target</text>
+<rect x="30" y="458" width="900" height="178" rx="12" fill="#eaf4ef" stroke="#83b99a" stroke-dasharray="6 4"/><text x="52" y="484" font-size="12" font-weight="bold" letter-spacing="1.5">05  SECURE DATABASE ACCESS</text>
+<rect x="52" y="504" width="245" height="100" rx="10" fill="#fff" stroke="#83b99a"/><text x="174" y="539" text-anchor="middle" font-size="16" font-weight="bold">AWS Secrets Manager</text><text x="174" y="561" text-anchor="middle" font-size="12">Scoped credential access</text>
+<rect x="358" y="504" width="245" height="100" rx="10" fill="#fff" stroke="#83b99a"/><text x="480" y="539" text-anchor="middle" font-size="16" font-weight="bold">Diagnostic Lambda</text><text x="480" y="561" text-anchor="middle" font-size="12">Private VPC · Bounded read-only tools</text>
+<rect x="663" y="504" width="245" height="100" rx="10" fill="#fff" stroke="#83b99a"/><text x="785" y="539" text-anchor="middle" font-size="16" font-weight="bold">RDS for PostgreSQL</text><text x="785" y="561" text-anchor="middle" font-size="12">TLS · Monitoring role · Port 5432</text>
+</g>
+<g stroke="#65778a" stroke-width="2" fill="none" marker-end="url(#arr)"><path d="M160 114 V133 H330 V191 H350"/><path d="M610 81 H670"/><path d="M800 114 V143 H550 V174"/><path d="M290 212 H350"/><path d="M610 212 H670"/><path d="M440 250 V274 H160 V318"/><path d="M358 554 H297"/><path d="M603 554 H663"/></g>
+<g stroke="#c56817" stroke-width="2.5" fill="none" marker-end="url(#orange)"><path d="M540 250 V318"/><path d="M640 412 V437 H480 V504"/></g>
+</svg><figcaption>Figure 1. Reference architecture. Blue-gray paths represent investigation inputs, telemetry, and supporting access; orange paths show MCP tool routing. The agent returns findings for human review.</figcaption></figure>
+<p>The solution has three main components.</p>
+<h3>AgentCore Gateway</h3>
+<p>AgentCore Gateway is a fully managed MCP endpoint between AWS DevOps Agent and the database tools. You register the Lambda function as a target and define its tool schemas. The Gateway turns MCP tool calls into Lambda invocations, so you do not run an MCP server. An MCP client connects to the Gateway URL over Streamable HTTP and authenticates with Signature Version 4 (SigV4). It discovers and calls tools with the standard <code>tools/list</code> and <code>tools/call</code> requests.</p>
+<p>In this solution, the Gateway provides:</p>
+<ul>
+<li>SigV4 authentication for every caller.</li>
+<li>An allowlist, so the agent can call only the registered tools.</li>
+<li>Database credentials that stay in AWS Secrets Manager. The agent never sees them.</li>
+<li>One endpoint for AWS DevOps Agent and any other MCP client that can sign the request.</li>
+</ul>
+<h3>AWS DevOps Agent</h3>
+<p>AWS DevOps Agent is a managed service that investigates incidents. You connect it to your AWS account and to the tools behind the Gateway. The agent receives alarms, decides what to check, calls the tools it needs, and sends findings to your team. It reads AWS data through a read-only IAM role. It gets database detail only through the Gateway. The agent has no database connectivity and no access to database credentials.</p>
+<h3>AWS DevOps Agent Skills</h3>
+<p>A skill is a directory of Markdown instructions. The <code>postgres-investigation</code> skill in this post is organized as:</p>
+<pre><code class="language-text">postgres-investigation/
+├── SKILL.md
+└── references/
+    └── tool-reference.md
+</code></pre>
+<p><code>SKILL.md</code> is the only required file. The frontmatter names the skill and says when to use it. The body holds a five-step method. The description is the trigger. When an incoming request matches the wording, the agent loads the skill.</p>
+<p>The five steps:</p>
+<ol>
+<li><strong>Triage.</strong> Read health from Amazon CloudWatch and CloudWatch Database Insights. Set severity against fixed thresholds for CPU, connections, read latency, and freeable memory.</li>
+<li><strong>Diagnose.</strong> Find the dominant wait from <code>get_activity_summary</code> and <code>get_wait_events</code>.</li>
+<li><strong>Drill down.</strong> Lock contention, CPU, I/O, connection pressure, or replica lag. Each path calls only the tools that fit it.</li>
+<li><strong>Correlate.</strong> Decide whether the problem is a spike or a standing condition by comparing the incident window with the hour before it.</li>
+<li><strong>Recommend.</strong> Report severity, root cause, evidence, and fixes in priority order. State that no session was terminated.</li>
+</ol>
+<p>Every step reads built-in AWS telemetry first and uses the query tools only for the session, lock, and statement detail that telemetry does not expose. <code>references/tool-reference.md</code> holds the thresholds and each tool's arguments.</p>
+<p>To adapt the skill, edit <code>SKILL.md</code> and its references, rebuild the package, and upload or publish the updated skill in the Agent Space. Confirm the new version is enabled before starting another investigation. The skill is managed separately from the infrastructure stacks.</p>
+<h2>How an investigation flows</h2>
+<ol>
+<li>A CloudWatch alarm invokes a webhook Lambda, which posts an HMAC-signed event to the Agent Space webhook. You can also start an investigation from the Agent Space chat. Before a full investigation, the agent compares the event with active investigations and either links it or starts a new one.</li>
+<li>The agent loads <code>postgres-investigation</code>, which sets the steps, the thresholds, and the report format.</li>
+<li>Through its IAM role, the agent reads CloudWatch metrics, Database Insights, and CloudWatch Logs to see which metric is high and which wait dominates.</li>
+<li>For blocking chains, expensive statements, or missing indexes, the agent calls the MCP tools through the Gateway. The Gateway authenticates with SigV4. The query Lambda, in a private subnet, reads the database secret from Secrets Manager and returns session and statement detail. The agent never sees the password.</li>
+<li>The agent sends severity, root cause, and recommended fixes to the Agent Space. You can also fan out to Slack, email, or the channel your space is connected to.</li>
+</ol>
+<p>Built-in telemetry is the monitoring layer. It shows what kind of problem you have. The MCP tools are the investigation layer. They show which backend, which statement, and which lock.</p>
+<h2>PostgreSQL tools</h2>
+<p>RDS for PostgreSQL has no SQL Server-style Query Store or shared execution-plan history accessible through ordinary monitoring views. The <code>pg_stat_statements</code> extension provides cumulative, normalized statement execution statistics, not a chronological query log. A time-window comparison requires timestamped snapshots or historical telemetry. The query Lambda exposes twelve tools.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>check_extensions</code></td>
+<td>Checks that <code>pg_stat_statements</code> is installed</td>
+</tr>
+<tr>
+<td><code>get_activity_summary</code></td>
+<td>Counts sessions by state and wait type</td>
+</tr>
+<tr>
+<td><code>get_blocking_sessions</code></td>
+<td>Shows blocking chains and the head blocker</td>
+</tr>
+<tr>
+<td><code>get_slow_queries</code></td>
+<td>Lists statements running longer than a threshold</td>
+</tr>
+<tr>
+<td><code>get_top_statements</code></td>
+<td>Lists top statements by total time, mean time, calls, or reads</td>
+</tr>
+<tr>
+<td><code>get_wait_events</code></td>
+<td>Shows current wait events</td>
+</tr>
+<tr>
+<td><code>get_lock_summary</code></td>
+<td>Counts locks by type, mode, and granted</td>
+</tr>
+<tr>
+<td><code>get_index_usage</code></td>
+<td>Compares sequential scans with index scans</td>
+</tr>
+<tr>
+<td><code>get_unused_indexes</code></td>
+<td>Lists nonunique indexes with no recorded scans in the current statistics window; this alone does not justify dropping an index</td>
+</tr>
+<tr>
+<td><code>get_database_stats</code></td>
+<td>Returns commits, rollbacks, deadlocks, and block hits</td>
+</tr>
+<tr>
+<td><code>get_replication_lag</code></td>
+<td>Reports physical standby or read-replica replication indicators where available; lag values can be null and are not always a measure of current backlog</td>
+</tr>
+<tr>
+<td><code>explain_query</code></td>
+<td>Runs <code>EXPLAIN</code> for one <code>SELECT</code> identified by <code>queryid</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>explain_query</code> is optional. It generates an estimated plan rather than recovering another session's historical plan. Use plain <code>EXPLAIN</code>, not <code>EXPLAIN ANALYZE</code>. The diagnostic role requires appropriate privileges on referenced relations; <code>pg_monitor</code> alone does not provide those privileges. Disable the tool when they are not explicitly authorized. A statement prefix check is not a complete SQL safety boundary. Require validated single-statement input, narrowly scoped privileges, and read-only transactions; retain the eight-second statement timeout and 50-row response limit. Normalized statements containing placeholders may require additional context and cannot always be explained as stored.</p>
+<p>In DevOps Agent, tool names take the form <code>&lt;target&gt;___&lt;tool&gt;</code> (three underscores). The Gateway does not put that name in the JSON body. It sets the Lambda client context field <code>bedrockAgentCoreToolName</code>. The handler has to read it:</p>
+<pre><code class="language-python">name = &quot;&quot;
+client = getattr(context, &quot;client_context&quot;, None)
+custom = getattr(client, &quot;custom&quot;, None) if client else None
+if isinstance(custom, dict):
+    name = custom.get(&quot;bedrockAgentCoreToolName&quot;, &quot;&quot;)
+if &quot;___&quot; in name:
+    name = name.split(&quot;___&quot;, 1)[1]
+</code></pre>
+<p>A handler that only reads <code>event["tool"]</code> returns "unknown tool" for every Gateway call. The agent then reports that the diagnostic tools are down, even though a direct invoke of the same function works. Keep the event-body path for tests.</p>
+<h2>Getting started</h2>
+<h3>Database</h3>
+<p>The default PostgreSQL parameter group cannot be edited. Create a group in the same family and set:</p>
+<ul>
+<li><code>shared_preload_libraries = pg_stat_statements</code></li>
+<li><code>pg_stat_statements.track = top</code></li>
+<li><code>pg_stat_statements.max = 5000</code></li>
+<li><code>log_lock_waits = on</code></li>
+<li><code>log_min_duration_statement = 1000</code></li>
+</ul>
+<p><code>shared_preload_libraries</code> applies on reboot. Attach the group, wait until the instance is available, then reboot. Connect to the application database and run <code>CREATE EXTENSION IF NOT EXISTS pg_stat_statements</code>.</p>
+<p>Create a dedicated non-master login. Grant <code>pg_monitor</code> for monitoring and restrict connectivity to the intended database, reviewing inherited grants and default PUBLIC permissions. <code>pg_monitor</code> is a cluster-level predefined role, not a database-specific grant, and exposes privileged monitoring information. Do not grant application write, schema ownership, or backend-signaling privileges. Verify effective grants before deployment. The skill recommends remediation; it does not execute it.</p>
+<p>Store the password in Secrets Manager as JSON: <code>username</code>, <code>password</code>, <code>host</code>, <code>port</code>, <code>dbname</code>.</p>
+<h3>Network</h3>
+<p>The query Lambda runs in the database VPC so it can open port 5432. Private subnets often have no NAT gateway. Without a path to Secrets Manager, the function times out before it reaches PostgreSQL.</p>
+<p>Use either a NAT gateway on the subnet route table, or an interface VPC endpoint for Secrets Manager. With the endpoint, leave private DNS off if the rest of the VPC should keep resolving Secrets Manager the usual way. Pass the endpoint DNS name to the Lambda and use it as <code>endpoint_url</code>. The endpoint security group accepts TCP 443 only from the Lambda security group. The database security group accepts TCP 5432 only from that same group.</p>
+<p>Package <code>psycopg</code> as a manylinux wheel for the architecture you deploy. A wheel built on a developer laptop will not load in Lambda. This stack uses Python 3.12 on arm64.</p>
+<h3>Stack</h3>
+<p>One CloudFormation stack creates the query Lambda, its security group, the Secrets Manager endpoint, and three alarms: CPU utilization, database connections, and read latency. A second stack creates the Gateway, the tool target, the Agent Space, the account association, and the webhook Lambda. The alarms in that stack invoke the webhook function.</p>
+<p>Deploy with <code>aws cloudformation package</code> and <code>aws cloudformation deploy</code>. The resource types <code>AWS::BedrockAgentCore::Gateway</code> and <code>AWS::DevOpsAgent::AgentSpace</code> have to be available in the region. Confirm that in the console before you deploy. The CLI version that can package a template is not always the CLI version that has <code>aws devops-agent</code>.</p>
+<p>After deploy:</p>
+<p>Confirm that the MCP server is registered and associated with the Agent Space using SigV4 and an IAM role authorized for that Gateway. Verify tool discovery and a benign monitoring call before enabling alarm-driven investigations. Direct CloudWatch alarm invocation also requires a scoped Lambda resource policy.</p>
+<ol>
+<li>Upload the skill. The repo includes <code>postgres-investigation.zip</code>, which contains <code>SKILL.md</code> and <code>references/tool-reference.md</code>. In the Agent Space console, add that zip as a skill. With a current AWS CLI:</li>
+</ol>
+<pre><code class="language-bash">aws devops-agent create-asset \
+  --agent-space-id &quot;$AGENT_SPACE_ID&quot; \
+  --asset-type skill \
+  --metadata '{&quot;agent_types&quot;:[&quot;GENERIC&quot;]}' \
+  --content &quot;{\&quot;zip\&quot;:{\&quot;zipFile\&quot;:\&quot;$(base64 &lt; postgres-investigation.zip | tr -d '\n')\&quot;}}&quot; \
+  --region &quot;$AWS_REGION&quot;
+</code></pre>
+<p>Rebuild the zip after any edit to <code>SKILL.md</code>. Redeploying the stack does not publish the skill. Verify the CLI asset schema and binary encoding against the installed CLI version; the console upload is an alternative.</p>
+<ol start="2"><li>In the Agent Space, add a webhook. Store the URL and signing secret securely in the intended Secrets Manager secret. Verify event delivery using a controlled non-production test.</li></ol>
+<h2>Use case 1: Answer an on-call question from chat</h2>
+<p>An on-call engineer opens the Agent Space chat and asks whether the PostgreSQL instance is healthy, and whether any alarm has fired in the last hour.</p>
+<p>The agent answers from live telemetry first. It reports CPU, freeable memory, connection count against the alarm threshold, and average active sessions. If the instance is small and idle, that answer is enough. If connections or lock waits are elevated, it calls <code>get_activity_summary</code> and <code>get_wait_events</code> through the Gateway and says which wait dominates.</p>
+<p>The engineer gets one reply instead of opening Database Insights and a SQL client side by side. The reply names the metric and the threshold. It does not guess a root cause the tools did not return.</p>
+<figure>
+<div class="demo-chat" aria-label="Simulated AWS DevOps Agent conversation, not an actual AWS console screenshot">
+<div class="demo-banner">ILLUSTRATIVE DEMO · SYNTHETIC DATA · NOT A LIVE AWS CONSOLE</div>
+<div class="demo-shell">
+<aside class="demo-sidebar"><strong>✳ AWS DevOps Agent</strong><p>＋ New chat</p><p class="demo-nav-label">Pages</p><p>Incidents</p><p>Improvements</p><p>Changes</p><p>Artifacts</p><p>Topology</p><p class="demo-nav-label">Chats</p><p class="demo-selected">PostgreSQL health check</p><p>Database connection trends</p><p>SQL performance review</p><p class="demo-nav-label">View all chats</p></aside>
+<div class="demo-main">
+<div class="demo-header">Checking database health and CPU utilization</div>
+<div class="demo-messages">
+<div class="demo-user">Is the PostgreSQL instance healthy? Have any alarms fired in the last hour?</div>
+<div class="demo-agent"><p>I'll check CloudWatch metrics, recent alarms, and Database Insights for <code>demo-rds-postgres</code>.</p>
+<details class="demo-tools"><summary>3 illustrative telemetry checks</summary><ul><li>CloudWatch metrics</li><li>CloudWatch alarm history</li><li>Database Insights</li></ul></details>
+<p><strong>Current health: Normal</strong> · Example observation window: 05:00–06:00 UTC</p>
+<ul><li>CPU utilization: 8% (example alarm threshold: 80%).</li><li>Database connections: 4 (example threshold: 40).</li><li>Read latency: 2 ms; no alarms in the example window.</li><li>Database load: low, with no sustained lock-wait spike.</li></ul>
+<p>The metrics do not indicate an active database incident.</p></div>
+<div class="demo-user">Do you see any long-running sessions or blocked queries?</div>
+<div class="demo-agent"><p>I'll check the current PostgreSQL session activity and lock waits through the registered MCP tools.</p>
+<details class="demo-tools" open><summary>3 illustrative MCP tools used</summary><ul><li><code>get_activity_summary</code></li><li><code>get_slow_queries</code></li><li><code>get_blocking_sessions</code></li></ul></details>
+<p><strong>Current session activity (example snapshot)</strong></p>
+<ul><li>1 active session, 2 idle sessions, and 1 idle-in-transaction session.</li><li>No statements exceed the illustrative 30-second duration threshold.</li><li>No blocked sessions were reported at the time of the snapshot.</li></ul>
+<p><strong>What this means</strong></p><p>The idle-in-transaction session is worth monitoring. It may retain locks or delay cleanup if left open, although the available snapshot does not establish that it is causing a problem.</p>
+<p><strong>Recommended next step:</strong> Review the transaction lifecycle with the application owner if the condition persists. No session was terminated and no database configuration was changed.</p>
+<div class="demo-time">Illustrative response · 06:00 UTC</div></div>
+</div></div></div></div>
+<figcaption>Figure 2. Simulated AWS DevOps Agent chat, inspired by the console layout. All responses, tool activity, timestamps, resource identifiers, and metrics are fictional and demonstrate the intended workflow; they are not test results.</figcaption>
+</figure>
+<h2>Use case 2: Investigate a blocking incident triggered by an alarm</h2>
+<p>A session starts a transaction, updates one row, and sleeps. Other sessions update the same row and block. The connection count crosses the alarm threshold. The alarm invokes the webhook Lambda, which starts an investigation. Nobody asks a question.</p>
+<p>The agent follows the five steps.</p>
+<ol>
+<li><strong>Triage.</strong> The connection alarm is in ALARM. CPU may be high or quiet. Severity follows the thresholds in the skill.</li>
+<li><strong>Diagnose.</strong> Lock is the dominant wait, so the skill sends the agent to the blocking path.</li>
+<li><strong>Drill down.</strong> <code>get_blocking_sessions</code> returns the head blocker: pid, user, application, transaction age, and the statement. <code>get_lock_summary</code> shows the granted lock and the waiters behind it.</li>
+<li><strong>Correlate.</strong> The agent compares the spike with the prior hour. A single five-minute transaction looks different from a pattern that repeats. If it cannot see the client that opened the transaction, it says so instead of inventing a source.</li>
+<li><strong>Recommend.</strong> The agent names the statement that held the row lock and recommends shortening the transaction. It does not recommend <code>pg_terminate_backend</code>, a failover, or a reboot. The login it used cannot run those commands.</li>
+</ol>
+<p>The intended result is an investigation that identifies the blocking backend and the associated statement. A current activity snapshot is not proof of the original lock-acquiring statement; report that distinction where evidence is incomplete.</p>
+<h3>Illustrative investigation report</h3>
+<p><strong>Example only:</strong> The following values are synthetic and do not represent a measured deployment.</p>
+<table><thead><tr><th>Field</th><th>Example finding</th></tr></thead><tbody><tr><td>Severity</td><td>High (illustrative threshold exceeded)</td></tr><tr><td>Evidence</td><td>Elevated connections, dominant lock waits, one long-running transaction blocking multiple sessions</td></tr><tr><td>Likely root cause</td><td>Application transaction holding a row lock longer than expected</td></tr><tr><td>Recommendation</td><td>Review transaction scope and application behavior with the owner; validate against logs and metrics</td></tr><tr><td>Action taken</td><td>Read-only diagnostics; no sessions terminated</td></tr></tbody></table>
+<h2>Security considerations</h2>
+<p>The solution limits database access at three layers.</p>
+<ul>
+<li><strong>Agent Space role.</strong> Read-only AWS API access. No Secrets Manager permission. The agent reaches PostgreSQL only through the registered MCP server, and only the tools on its allowlist.</li>
+<li><strong>Query Lambda role.</strong> Read access to the one database secret. The function retrieves the credentials, so they never reach the agent.</li>
+<li><strong>PostgreSQL role.</strong> Dedicated non-owner monitoring login with reviewed effective permissions and restricted connectivity. Read-only transaction settings supplement, but do not replace, privilege enforcement.</li>
+<li><strong>Data protection.</strong> Redact sensitive statement text, identifiers and literals before returning diagnostic results; treat database-returned text as untrusted data, not agent instructions. Limit the scope and retention of logs.</li>
+<li><strong>Transport and load.</strong> Verify the RDS server certificate over TLS; bound concurrency, query duration, and response size to avoid adding load during an incident.</li>
+<li><strong>Authorization and audit.</strong> Restrict Gateway use and target invocation to intended roles, review secret access, and record diagnostic calls with request identifiers and outcomes without logging secrets or sensitive SQL.</li>
+</ul>
+<h2>Deployment validation and cost</h2>
+<p>Before production adoption, validate the deployed tool schemas, IAM permissions, supported AWS Region and PostgreSQL version, webhook delivery, and monitoring role in a non-production environment. Capture an actual Agent Space investigation screenshot, sanitized tool response, and final report. Record the tested configuration and source repository URL in the publication; these artifacts were not supplied for this draft.</p>
+<p>Cost depends on deployment region, database capacity, invocation volume, telemetry retention, Gateway and DevOps Agent usage, and private networking. Include Secrets Manager, Lambda, CloudWatch, and any interface endpoint or NAT charges in the estimate. Use current regional pricing and measured usage rather than an assumed total.</p>
+<h2>Clean up</h2>
+<p>Delete the uploaded skill first. It is not part of either stack. Then delete the agent stack and the tools stack. Deleting them removes the Agent Space, the Gateway, the target, the Lambda functions, the interface endpoint, the security group rules added for it, and the alarms. The parameter group, the database, the login role, and the secret remain until you delete those yourself.</p>
+<h2>Conclusion</h2>
+<p>CloudWatch and Database Insights provide operational context. MCP tools behind AgentCore Gateway supplement that context with live blocking chains, cumulative statement statistics, lock modes, and index usage. The skill guides the agent to consult built-in telemetry first and query the database when the symptoms justify it. Database privileges and application controls enforce the diagnostic boundary; skill instructions guide reporting and recommendations.</p>
+<h2>References</h2><ul><li><a href="https://docs.aws.amazon.com/devopsagent/latest/userguide/configuring-integrations-and-knowledge-connecting-mcp-servers.html">AWS DevOps Agent: Connecting MCP servers</a></li><li><a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-add-target-lambda.html">AgentCore Gateway: Lambda targets</a></li><li><a href="https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent-managing-assets.html">AWS DevOps Agent: Managing assets</a></li><li><a href="https://www.postgresql.org/docs/current/pgstatstatements.html">PostgreSQL: pg_stat_statements</a></li><li><a href="https://www.postgresql.org/docs/current/predefined-roles.html">PostgreSQL: predefined roles</a></li><li><a href="https://aws.amazon.com/pricing/">AWS pricing</a></li></ul>
+<p>Two paths use the same tools. In the first, an engineer asks for a health check in chat. In the second, an alarm starts an investigation and the agent returns the head blocker and the statement.</p></body></html>
