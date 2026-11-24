@@ -35,8 +35,12 @@ A reference implementation for investigating Amazon RDS for PostgreSQL operation
 4. Package the [investigation skill](skills/postgres-investigation/) and configure it in an Agent Space.
 5. Complete the [validation checklist](tests/README.md) before any production use.
 
-The query catalog is an illustrative implementation component, not a deployed MCP server. Gateway registration, Lambda packaging and CloudFormation stacks still need environment-specific implementation and testing. No live AWS account was accessed.
+The query catalog is an illustrative implementation component, not a deployed MCP server. Reviewed diagnostic and webhook Lambda source is included under `deployment/lambda/`. Gateway registration, CloudFormation stacks, dependency packaging and integration tests remain pending. No live AWS account was accessed.
 
 ## Reference
 
 Inspired by the organization of [AWS's SQL Server sample](https://github.com/aws-samples/sample-agentic-db-ops-sqlserver). The PostgreSQL design and documentation here are independent.
+
+## Example resource name
+
+All illustrative references use `pgmonitor-test`, a fictional RDS instance identifier. Configure your own resource identifiers through deployment parameters and secrets; never commit actual credentials or identifiers.

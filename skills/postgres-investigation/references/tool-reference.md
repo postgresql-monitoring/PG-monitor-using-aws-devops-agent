@@ -15,7 +15,7 @@ Login: `dbops_reader` with `pg_monitor` on database `test`. All tools are read-o
 | get_unused_indexes | schema (default public) | pg_stat_user_indexes |
 | get_database_stats | none | pg_stat_database |
 | get_replication_lag | none | pg_stat_replication |
-| explain_query | queryid (SELECT only) | EXPLAIN of pg_stat_statements.query |
+| explain_query | Disabled | Not registered |
 
 ## Thresholds (db.t4g.small)
 
@@ -28,4 +28,4 @@ Login: `dbops_reader` with `pg_monitor` on database `test`. All tools are read-o
 
 Do not recommend killing sessions. `dbops_reader` cannot call `pg_terminate_backend`.
 
-The tool list describes the intended interface. The initial catalog implements aggregate activity, waits, locks and database statistics; other tools require separate implementation and privacy review. `explain_query` is disabled in the initial release. Thresholds are illustrative, not measured or universally appropriate.
+Eleven fixed diagnostics are implemented in the reviewed Lambda source. Responses omit raw SQL, client addresses and user names; index and schema metadata still require authorized access. No live integration test has been performed. `explain_query` is disabled in the initial release. Thresholds are illustrative, not measured or universally appropriate.

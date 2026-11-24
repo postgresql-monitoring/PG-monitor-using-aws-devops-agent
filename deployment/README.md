@@ -1,6 +1,6 @@
 # Deployment plan
 
-This guide describes the intended two-stage design; the infrastructure templates and deployed Lambda/Gateway wiring are not yet included or validated.
+This guide describes the intended two-stage design; reviewed Lambda sources are included; infrastructure templates and deployed Gateway wiring are not yet included or validated.
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ Review the database role and effective grants. Configure the approved diagnostic
 
 ## Stage 2: Agent integration
 
-Once the diagnostic Lambda is implemented and reviewed, register its approved tool schemas in AgentCore Gateway, configure the authorized Agent Space integration, and confirm the skill is enabled. Begin with on-demand health checks; enable approved alarm delivery only after verifying the integration.
+After testing the diagnostic Lambda in your approved environment, register its approved tool schemas in AgentCore Gateway, configure the authorized Agent Space integration, and confirm the skill is enabled. Begin with on-demand health checks; enable approved alarm delivery only after verifying the integration.
 
 ## Skill packaging
 
@@ -33,3 +33,7 @@ Complete the checklist in [tests/README.md](../tests/README.md). Remove only pro
 
 - [AWS DevOps Agent documentation](https://docs.aws.amazon.com/devopsagent/latest/userguide/)
 - [Amazon Bedrock AgentCore Gateway](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-add-target-lambda.html)
+
+## Lambda source
+
+See [diagnostics and webhook packaging notes](lambda/README.md). Use `pgmonitor-test` only as an illustrative instance identifier; do not hard-code live resource names.

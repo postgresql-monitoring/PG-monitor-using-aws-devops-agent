@@ -33,11 +33,11 @@ Call `get_activity_summary` and `get_wait_events`. Pick the dominant wait:
 
 #### 3a. Lock
 
-`get_blocking_sessions`, then `get_lock_summary`. Name the head blocker pid, user, application, transaction age, and the SQL. Do not recommend `pg_terminate_backend`.
+`get_blocking_sessions`, then `get_lock_summary`. Report the observed blocking relationships, PID and transaction age; corroborate application ownership separately with an authorized operator. Do not expose raw SQL or client identifiers. Do not recommend `pg_terminate_backend`.
 
 #### 3b. CPU
 
-`get_top_statements` ordered by `total_time`, then `mean_time`. Use `explain_query` only for a SELECT `queryid`.
+`get_top_statements` ordered by `total_time`, then `mean_time`. Report cumulative statement statistics by query ID; execution plans are outside the initial tool set.
 
 #### 3c. IO
 
@@ -49,7 +49,7 @@ Call `get_activity_summary` and `get_wait_events`. Pick the dominant wait:
 
 #### 3e. Replica
 
-`get_replication_lag`. If the view is empty, say this instance has no subscribers.
+`get_replication_lag`. If the view is empty, report that no replication rows were observed; it does not prove the absence of replicas.
 
 ### 4. Correlate
 
@@ -57,7 +57,7 @@ Compare the window with the hour before it. Note whether the pattern is a spike 
 
 ### 5. Recommend
 
-Report severity, root cause, the evidence (pids, query text, waits), and ordered fixes. State explicitly that no session was terminated.
+Report severity, root cause, the evidence (PIDs, query IDs, waits), and ordered fixes. State explicitly that no session was terminated.
 
 ## Safety and evidence boundaries
 

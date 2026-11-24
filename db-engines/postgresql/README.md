@@ -11,4 +11,4 @@ The initial fixed query catalog in [tools/monitoring.sql](tools/monitoring.sql) 
 
 No query returns SQL statements, credentials or application rows. Statistics are snapshots or cumulative counters, not historical time-series. Compare with timestamped telemetry rather than treating deltas as inherent.
 
-The remaining tools in the skill reference are planned. Do not register them until implemented and reviewed. The query catalog is not yet wired into Lambda or MCP.
+A reviewed Lambda implementation containing eleven fixed monitoring tools is available in [deployment/lambda/diagnostics](../../deployment/lambda/diagnostics/). EXPLAIN is intentionally unavailable. Gateway configuration and live database testing remain pending.

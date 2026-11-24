@@ -26,7 +26,7 @@ figure { margin: 28px 0; } figcaption { color: #576474; font-size: 14px; margin-
 .demo-tools summary { cursor: pointer; font-weight:600; }
 .demo-time { font-size: 11px; color:#9ba3b1; text-align:right; }
 @media (max-width: 650px) { .demo-shell { grid-template-columns: 1fr; } .demo-sidebar { display:none; } .demo-messages { padding: 14px; } }
-</style><body><p><strong>Reference design and illustrative examples; deployment components and live AWS validation are pending. See the repository README for current scope.</strong></p><h1>Automating Amazon RDS for PostgreSQL investigations with AWS DevOps Agent, MCP, and Agent Skills</h1>
+</style><body><p><strong>Reference design and illustrative examples; reviewed Lambda sources are included; CloudFormation, Gateway wiring and live AWS validation are pending. See the repository README for current scope.</strong></p><h1>Automating Amazon RDS for PostgreSQL investigations with AWS DevOps Agent, MCP, and Agent Skills</h1>
 <p>AWS DevOps Agent investigates operational events and delivers findings to your team. In this post, we walk through an architecture that exposes PostgreSQL diagnostic tools to AWS DevOps Agent as Model Context Protocol (MCP) tools. The tools run in an AWS Lambda function, and Amazon Bedrock AgentCore Gateway hosts the MCP endpoint. An AWS DevOps Agent skill defines the investigation steps, severity thresholds, and report format. Two CloudFormation stacks provision the infrastructure, with additional integration and skill configuration. We then follow two investigations that combine built-in Amazon CloudWatch telemetry with direct PostgreSQL access through the Gateway.</p>
 <h2>Solution overview</h2>
 <p>This solution uses AWS DevOps Agent, Amazon Bedrock AgentCore Gateway, and AWS Lambda to automate database investigations for Amazon RDS for PostgreSQL. The following diagram shows the architecture.</p>
@@ -96,7 +96,7 @@ figure { margin: 28px 0; } figcaption { color: #576474; font-size: 14px; margin-
 </ol>
 <p>Built-in telemetry is the monitoring layer. It shows what kind of problem you have. The MCP tools are the investigation layer. They show which backend, which statement, and which lock.</p>
 <h2>PostgreSQL tools</h2>
-<p>RDS for PostgreSQL has no SQL Server-style Query Store or shared execution-plan history accessible through ordinary monitoring views. The <code>pg_stat_statements</code> extension provides cumulative, normalized statement execution statistics, not a chronological query log. A time-window comparison requires timestamped snapshots or historical telemetry. The query Lambda exposes twelve tools.</p>
+<p>RDS for PostgreSQL has no SQL Server-style Query Store or shared execution-plan history accessible through ordinary monitoring views. The <code>pg_stat_statements</code> extension provides cumulative, normalized statement execution statistics, not a chronological query log. A time-window comparison requires timestamped snapshots or historical telemetry. The query Lambda source implements eleven fixed monitoring tools; EXPLAIN remains disabled.</p>
 <table>
 <thead>
 <tr>
@@ -189,7 +189,7 @@ if &quot;___&quot; in name:
 <p>After deploy:</p>
 <p>Confirm that the MCP server is registered and associated with the Agent Space using SigV4 and an IAM role authorized for that Gateway. Verify tool discovery and a benign monitoring call before enabling alarm-driven investigations. Direct CloudWatch alarm invocation also requires a scoped Lambda resource policy.</p>
 <ol>
-<li>Upload the skill. The repo includes <code>postgres-investigation.zip</code>, which contains <code>SKILL.md</code> and <code>references/tool-reference.md</code>. In the Agent Space console, add that zip as a skill. With a current AWS CLI:</li>
+<li>Upload the skill. The repository packaging script generates <code>postgres-investigation.zip</code>, which contains <code>SKILL.md</code> and <code>references/tool-reference.md</code>. In the Agent Space console, add that zip as a skill. With a current AWS CLI:</li>
 </ol>
 <pre><code class="language-bash">aws devops-agent create-asset \
   --agent-space-id &quot;$AGENT_SPACE_ID&quot; \
@@ -213,7 +213,7 @@ if &quot;___&quot; in name:
 <div class="demo-header">Checking database health and CPU utilization</div>
 <div class="demo-messages">
 <div class="demo-user">Is the PostgreSQL instance healthy? Have any alarms fired in the last hour?</div>
-<div class="demo-agent"><p>I'll check CloudWatch metrics, recent alarms, and Database Insights for <code>demo-rds-postgres</code>.</p>
+<div class="demo-agent"><p>I'll check CloudWatch metrics, recent alarms, and Database Insights for <code>pgmonitor-test</code>.</p>
 <details class="demo-tools"><summary>3 illustrative telemetry checks</summary><ul><li>CloudWatch metrics</li><li>CloudWatch alarm history</li><li>Database Insights</li></ul></details>
 <p><strong>Current health: Normal</strong> · Example observation window: 05:00–06:00 UTC</p>
 <ul><li>CPU utilization: 8% (example alarm threshold: 80%).</li><li>Database connections: 4 (example threshold: 40).</li><li>Read latency: 2 ms; no alarms in the example window.</li><li>Database load: low, with no sustained lock-wait spike.</li></ul>
@@ -235,9 +235,9 @@ if &quot;___&quot; in name:
 <ol>
 <li><strong>Triage.</strong> The connection alarm is in ALARM. CPU may be high or quiet. Severity follows the thresholds in the skill.</li>
 <li><strong>Diagnose.</strong> Lock is the dominant wait, so the skill sends the agent to the blocking path.</li>
-<li><strong>Drill down.</strong> <code>get_blocking_sessions</code> returns the head blocker: pid, user, application, transaction age, and the statement. <code>get_lock_summary</code> shows the granted lock and the waiters behind it.</li>
+<li><strong>Drill down.</strong> <code>get_blocking_sessions</code> returns the blocking relationships, PID and transaction age; the reviewed source does not return raw SQL or client identities. <code>get_lock_summary</code> shows the granted lock and the waiters behind it.</li>
 <li><strong>Correlate.</strong> The agent compares the spike with the prior hour. A single five-minute transaction looks different from a pattern that repeats. If it cannot see the client that opened the transaction, it says so instead of inventing a source.</li>
-<li><strong>Recommend.</strong> The agent names the statement that held the row lock and recommends shortening the transaction. It does not recommend <code>pg_terminate_backend</code>, a failover, or a reboot. The login it used cannot run those commands.</li>
+<li><strong>Recommend.</strong> The agent reports the observed blocking relationships and recommends shortening the transaction. It does not recommend <code>pg_terminate_backend</code>, a failover, or a reboot. The login it used cannot run those commands.</li>
 </ol>
 <p>The intended result is an investigation that identifies the blocking backend and the associated statement. A current activity snapshot is not proof of the original lock-acquiring statement; report that distinction where evidence is incomplete.</p>
 <h3>Illustrative investigation report</h3>

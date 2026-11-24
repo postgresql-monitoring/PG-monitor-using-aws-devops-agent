@@ -1,6 +1,6 @@
 # Validation checklist
 
-No live deployment tests have been performed for this release.
+Python syntax checks passed for both Lambda source files. No live deployment tests have been performed for this release.
 
 - [ ] Run the skill packaging script and check archive filenames.
 - [ ] Test fixed catalog queries on an approved non-production instance.
